@@ -231,7 +231,7 @@ async function collectFeeder(source) {
     `DLSS5-Feeder v${feederRelease.version} — https://github.com/jlrouzies-fr/DLSS5-Feeder`,
     'VORT shaders b410b9f0c0fbb83c8cb42164aaf1655fab386f4a — https://github.com/vortigern11/vort_Shaders',
     'ReShade headers ee30868391d4ad103db60489820102d8fd40e3c1 — https://github.com/crosire/reshade-shaders',
-    'dgVoodoo2 v2.87.4 — downloaded at runtime; not bundled — https://github.com/dege-diosg/dgVoodoo2',
+    `dgVoodoo2 v${require('../src/core/runtime-components').DGVOODOO_VERSION} — downloaded at runtime; not bundled — https://github.com/dege-diosg/dgVoodoo2`,
     `RenoDX DLSS5 add-on v${renodx.CONSUMER.version} — https://github.com/clshortfuse/renodx`,
     `RenoDX DLSS Tool add-on ${renodx.MULTIPASS.version} — https://github.com/clshortfuse/renodx`,
     ''

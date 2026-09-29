@@ -835,7 +835,7 @@ function installOptions(d, pick, dir) {
       ${!opti ? `<label><span>${t('fRoute')}</span><select id="routeChoice">${routes.filter(item => item !== 'optiscaler').map((item) =>
         `<option value="${item}"${item === route ? ' selected' : ''}>${t(item === 'feeder' ? 'routeFeeder' : item === 'renodx' ? 'routeRenodx' : 'routeNative')}</option>`).join('')}</select></label>
       ` : ''}
-      ${!opti && api.api === 'dxgi' && api.label !== 'DirectX 12' ? `<label><span>${t('fReshadeFile')}</span><select id="reshadeProxy">
+      ${!opti && RESHADE_PROXY_APIS.includes(api.api) && api.label !== 'DirectX 12' ? `<label><span>${t('fReshadeFile')}</span><select id="reshadeProxy">
         <option value="dxgi"${pick.reshadeProxy !== 'd3d11' ? ' selected' : ''}>dxgi.dll</option>
         <option value="d3d11"${pick.reshadeProxy === 'd3d11' ? ' selected' : ''}>d3d11.dll</option>
       </select></label>` : ''}
@@ -847,7 +847,7 @@ function installOptions(d, pick, dir) {
         ${optiReason ? `<span>${t(optiReason)}</span>` : ''}
         ${route === 'native' ? `<span>${t('nativeEffectsHint')}</span>` : ''}
         ${route === 'renodx' ? `<span>${t('routeRenodxHint')}</span>` : ''}
-        ${!opti && api.api === 'dxgi' && pick.reshadeProxy === 'd3d11' ? `<span>${t('reshadeProxyHint')}</span>` : ''}
+        ${!opti && RESHADE_PROXY_APIS.includes(api.api) && pick.reshadeProxy === 'd3d11' ? `<span>${t(api.api === 'dxgi' ? 'reshadeProxyHint' : 'reshadeProxyWrapHint')}</span>` : ''}
         ${opti && (api.api === 'vulkan' || api.label === 'DirectX 11') ? `<span>${t('optiBridgeHint')}</span>` : ''}
         ${opti && api.api === 'vulkan' ? `<span>${t('optiVulkanHint')}</span>` : ''}
       </div>`,
@@ -1552,7 +1552,10 @@ document.addEventListener('keydown', (e) => {
 });
 // Most job events are progress markers read as codes. The few that are
 // advice for the person are shown in their language instead.
-const SPOKEN_JOB_CODES = new Set(['historySaveWarning', 'driverNeuralFault', 'oldShaderCompiler', 'overlaySkipped', 'feedVkLayerReady', 'neuralModelKept', 'rivalConsumerSetAside', 'overlayNotForRoute', 'multipassNext', 'forwarderRetired', 'optiDownloading', 'optiVerified']);
+// DirectX 11 games that ignore dxgi.dll (#328), and the wrapped DirectX 8/9
+// ones that become DirectX 11 inside dgVoodoo (#343).
+const RESHADE_PROXY_APIS = ['dxgi', 'd3d8', 'd3d9', 'ddraw'];
+const SPOKEN_JOB_CODES = new Set(['historySaveWarning', 'driverNeuralFault', 'oldShaderCompiler', 'overlaySkipped', 'feedVkLayerReady', 'neuralModelKept', 'rivalConsumerSetAside', 'overlayNotForRoute', 'multipassNext', 'forwarderRetired', 'optiDownloading', 'optiVerified', 'restoreRecovered']);
 window.lab.onJob((e) => jobLog(SPOKEN_JOB_CODES.has(e.code)
   ? t(e.code, ...Object.values(e.params || {}))
   : `${e.code} ${JSON.stringify(e.params)}`));

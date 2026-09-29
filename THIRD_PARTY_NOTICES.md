@@ -61,7 +61,7 @@ https://github.com/dege-diosg/dgVoodoo2
 https://dege.freeweb.hu/dgVoodoo2/ReadmeGeneral/
 
 Its binaries are not bundled with this application. When a DX8/DX9 installation
-is requested, the application downloads the complete official v2.87.4 archive,
+is requested, the application downloads the complete official v2.87.5 archive,
 verifies its pinned SHA-256 checksum and retains the original documentation
 and licence in its component cache. dgVoodoo2 remains under its author's
 licence, not this application's MIT licence.

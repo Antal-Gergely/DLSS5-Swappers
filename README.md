@@ -46,55 +46,22 @@ Both are on the latest release page, with `SHA256SUMS.txt` beside them.
 - **Community (BETA):** read what worked for other people, narrowed to the games on your PC and the graphics card in it, leave your own report, and talk it over underneath it. Opt-in, and everything you leave can be edited, deleted or withdrawn.
 - **Community chat:** one live room for everyone using the app - screenshots, game cards, replies with mentions and reactions.
 
-## New in 2.2.8
+## New in 2.2.9
 
-A new choice for DirectX 11 games that ignore `dxgi.dll`, NVIDIA's newest DLSS runtime, and every fix promised on the tracker since 2.2.7.
-
-### ✨ New
-
-- **ReShade as `d3d11.dll`.** Some DirectX 11 games never load `dxgi.dll`, so ReShade never started. The game page now has a **ReShade file** choice for DirectX 11 games: pick `d3d11.dll` and press Install. A game that is already installed is switched over for you ([#328]).
-- **A second theme.** **Settings → Theme** now holds two complete designs, and switching is instant. **Theme 1 · Classic** is the app you know, untouched. **Theme 2 · Aperture** is a new one, built from nothing: navigation runs across the top instead of down the side, a command bar searches everything (**Ctrl K**), a game opens as a full page with its own artwork behind it rather than a dialog, and motion carries the whole thing - pages morph into each other, cards light up under the pointer, and everything that moves rides the same spring. Light and dark work inside either theme.
-- **DLSS 310.9.1.** The app now carries NVIDIA's newest DLSS runtime, with the second-generation Ray Reconstruction model (Preset F).
-- **Two OptiScaler builds to choose from, per game.** Beside the current one there is now the **pre-SR multipass** fork (0.8.92): the neural model runs before the upscaler, with its own controls for each of up to three passes, optional peripheral compression to spend less on the edges of the frame, and rebuilt lighting and colour when the model runs below 100%. The current build stays the default; switching either way is one choice on the game page, and **Restore originals** still puts the game back exactly as it was.
-- **Every add-on up to date.** **DLSS5-Feeder 1.17.0**: an output stabiliser that stops a still part of the picture drifting after the camera stops, with both of its controls on the F8 panel; a same-device DirectX 12 session that no longer collides with a game's own DLSS; a readable message instead of a shader error on DirectX 9. **RenoDX DLSS 5 6.5.3** and the **DLSS Tool build of 2026-09-28** for the multipass route. The driver warning that opened every install on 616.64 and newer is gone: that fault belonged to the old v4.7 consumer, and the build shipped here is measured upstream as completing on 617.14.
-- **Safe graphics mode.** If the window flickers or keeps showing parts of what was there before scrolling, switch it on in Settings and the app draws without the graphics card ([#365]).
-- **Multipass for emulators.** PCSX2 and the other emulators are now offered the multipass route as well. The Feeder is still the recommended one ([#359]).
-
-<p><img src="docs/screenshots/19-feature-theme2-game.png" alt="Theme 2 · Aperture: a game opened as a full page" width="100%"></p>
-<p><img src="docs/screenshots/20-feature-theme2-library.png" alt="Theme 2 · Aperture: the games library" width="100%"></p>
-<p><img src="docs/screenshots/21-feature-theme2-settings.png" alt="Settings → Theme: the two designs side by side" width="100%"></p>
-
-### 🔧 Fixed
+Four faults from the tracker, fixed at the cause. Every one of them was reported by somebody in it.
 
 | | |
 |---|---|
-| **Multipass did nothing in games without DLSS** | The tool needs NVIDIA's Streamline files beside the game, and only games with DLSS of their own ship them. The multipass route now copies them in, and **Restore originals** takes them out again. A game's own Streamline is never touched ([#336], [#239]) |
-| **A newer DLSS was replaced with an older one** | A game that already carried a newer DLSS than the app's got ours instead. A newer file now stays where it is ([#329]) |
-| **"The panel does not attach on renodx/DirectX 11"** | The overlay message read like a fault. It now says the one reason that applies: a 32-bit game, the multipass or OptiScaler route, or an API the overlay does not run on ([#338]) |
-| **Where are the multipass settings?** | After a multipass install the log says where: press Home in game and open the RenoDX DLSS tab. For a game without DLSS it also says to turn off Require DLSS and set Hook Method to Present ([#336]) |
-| **Reports did not say which DirectX they used** | Every report inside a card now names its API ([#337]) |
-| **"SWAPER" on the icon** | It says SWAPPER now ([#326]) |
-| **The app contacted our server before anyone opened Community** | A fresh install polled for notifications eight seconds after launch. Opening Community is now the opt-in, and until then this app asks our server for nothing at all ([#358]) |
-| **OptiScaler would not download** | Two minutes was the whole transfer's budget, so a slow or filtered connection failed every time. It now has ten minutes and three attempts ([#370], [#373]) |
-| **A game card could only be closed from the top** | Reading to the bottom of a card left the close button far above. A click on the dimmed area around it closes it now ([#372]) |
-| **A game with a DX11 and a DX12 build showed only one** | Both executables have the same name, and the second was dropped for good. Both are in the picker now ([#355]) |
+| **The installer crashed before it opened** | On some machines the setup died instantly with `0xc0000005`, no window and no prompt, while the portable build was fine. The installer framework read past the end of a path Windows handed it. Fixed upstream, and this release is built with the fixed version ([#344]) |
+| **Restore originals went dead with the files still in the game** | A finished restore renames the backup record aside, and everything that decides whether a game has anything installed read only the live one. The app now offers the newest retired record whose files are still in the game, and restores from the same backups ([#325]) |
+| **dgVoodoo2 flagged by antivirus** | Upstream released 2.87.5 precisely because engines flag 2.87.4, and the app was pinned to 2.87.4 ([#390]) |
+| **ReShade never started in a wrapped DirectX 8/9 game** | Inside dgVoodoo the game is a DirectX 11 one, and some setups load only `d3d11.dll`. The **ReShade file** choice is offered for these games now ([#343], [#374]) |
 
-[Full 2.2.8 notes →](https://github.com/rakanki911/DLSS5-Swapper/releases/tag/v2.2.8)
-
-[#239]: https://github.com/rakanki911/DLSS5-Swapper/issues/239
-[#326]: https://github.com/rakanki911/DLSS5-Swapper/issues/326
-[#328]: https://github.com/rakanki911/DLSS5-Swapper/issues/328
-[#329]: https://github.com/rakanki911/DLSS5-Swapper/issues/329
-[#336]: https://github.com/rakanki911/DLSS5-Swapper/issues/336
-[#337]: https://github.com/rakanki911/DLSS5-Swapper/issues/337
-[#338]: https://github.com/rakanki911/DLSS5-Swapper/issues/338
-[#355]: https://github.com/rakanki911/DLSS5-Swapper/issues/355
-[#358]: https://github.com/rakanki911/DLSS5-Swapper/issues/358
-[#359]: https://github.com/rakanki911/DLSS5-Swapper/issues/359
-[#365]: https://github.com/rakanki911/DLSS5-Swapper/issues/365
-[#370]: https://github.com/rakanki911/DLSS5-Swapper/issues/370
-[#372]: https://github.com/rakanki911/DLSS5-Swapper/issues/372
-[#373]: https://github.com/rakanki911/DLSS5-Swapper/issues/373
+[#325]: https://github.com/rakanki911/DLSS5-Swapper/issues/325
+[#343]: https://github.com/rakanki911/DLSS5-Swapper/issues/343
+[#344]: https://github.com/rakanki911/DLSS5-Swapper/issues/344
+[#374]: https://github.com/rakanki911/DLSS5-Swapper/issues/374
+[#390]: https://github.com/rakanki911/DLSS5-Swapper/issues/390
 
 ## Earlier releases
 
@@ -102,6 +69,7 @@ Each one is written up in full - what broke, why, and what was changed.
 
 | | |
 |---|---|
+| **2.2.8** | [A second theme, and every add-on brought current](docs/releases/v2.2.8.md) - a whole second design, DLSS5-Feeder 1.17.0, RenoDX 6.5.3, a second OptiScaler build per game, and ten faults fixed |
 | **2.2.7** | [Find the reviews that matter to you](docs/releases/v2.2.7.md) - filter by your card, reviews for your games, notifications, and eight faults fixed |
 | **2.2.6** | [Community chat](docs/releases/v2.2.6.md) - one live room for everyone, and the right add-on on every route |
 | **2.2.5** | [Multipass](docs/releases/v2.2.5.md) - the neural pass up to ten times per frame, plus nine faults fixed at the cause |

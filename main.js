@@ -1926,8 +1926,10 @@ ipcMain.handle('install', (event, dir, exePath, requestedRoute, requestedApi) =>
       reshadeSetup: p.reshadeSetup,
       setupRunner: proton ? createSetupRunner(proton) : undefined,
       vulkanLayerTarget: path.join(app.getPath('userData'), 'reshade-vulkan'),
-      // DirectX 11 only (#328); OptiScaler has no ReShade of its own.
-      reshadeProxy: api === 'dxgi' && target.apiLabel !== 'DirectX 12' && route !== 'optiscaler'
+      // DirectX 11 (#328) and the wrapped DirectX 8/9 titles that become
+      // DirectX 11 inside dgVoodoo (#343). Not DirectX 12, which never loads
+      // d3d11.dll, and not OptiScaler, which has no ReShade of its own.
+      reshadeProxy: ['dxgi', 'd3d8', 'd3d9', 'ddraw'].includes(api) && target.apiLabel !== 'DirectX 12' && route !== 'optiscaler'
         ? reshadeProxyPreference(loadState(), dir, target.path) : 'dxgi',
       installReShade: true,
       addMissingDlss: true,

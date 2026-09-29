@@ -163,12 +163,17 @@ test('d3d11.dll is for DirectX 11 only (#328)', () => {
   assert.equal(hookForApi('d3d9', 'd3d11'), 'd3d9.dll');
   assert.equal(hookForApi('opengl', 'd3d11'), 'opengl32.dll');
   const main = read('main.js');
-  assert.match(main, /reshadeProxy: api === 'dxgi' && target\.apiLabel !== 'DirectX 12' && route !== 'optiscaler'/);
+  // It reaches the wrapped DirectX 8/9 titles too now, because inside dgVoodoo
+  // they are DirectX 11 games and some of those layers load only d3d11.dll
+  // (#343, #374). Never DirectX 12, which loads neither.
+  assert.match(main, /reshadeProxy: \['dxgi', 'd3d8', 'd3d9', 'ddraw'\]\.includes\(api\) && target\.apiLabel !== 'DirectX 12' && route !== 'optiscaler'/);
+  assert.match(read('src', 'renderer', 'renderer.js'), /const RESHADE_PROXY_APIS = \['dxgi', 'd3d8', 'd3d9', 'ddraw'\];/);
   assert.match(main, /ipcMain\.handle\('set-reshade-proxy'/);
   assert.match(read('preload.js'), /setReshadeProxy: \(dir, exePath, value\) => ipcRenderer\.invoke\('set-reshade-proxy'/);
   assert.match(read('src', 'core', 'backend-manager.js'), /reshadeFileChanged\(old, config\)\);/);
   const i18n = read('src', 'renderer', 'i18n.js');
   assert.equal((i18n.match(/reshadeProxyHint: '/g) || []).length, 2, 'in English and Arabic');
+  assert.equal((i18n.match(/reshadeProxyWrapHint: '/g) || []).length, 2, 'in English and Arabic');
   assert.equal((i18n.match(/fReshadeFile: '/g) || []).length, 2, 'in English and Arabic');
 });
 

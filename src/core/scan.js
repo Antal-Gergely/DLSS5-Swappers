@@ -688,6 +688,10 @@ async function scanGame(gameDir) {
       }
     } catch {}
   }
+  let recoverable = null;
+  if (!fs.existsSync(activeManifest)) {
+    try { recoverable = require('./apply').recoverableManifest(gameDir); } catch {}
+  }
   let reshade = chosen ? inspectReShade(path.dirname(chosen.path)) : inspectReShade(gameDir);
   if (!reshade.installed && install && install.vulkanLayer &&
       fs.existsSync(install.vulkanLayer.manifest || '')) {
@@ -710,7 +714,9 @@ async function scanGame(gameDir) {
     emptyReason,
     reshade,
     install,
-    hasBackup: fs.existsSync(activeManifest)
+    // A retired manifest whose files are still in the game counts: the button
+    // used to go dead in exactly the case where it is needed most (#325).
+    hasBackup: fs.existsSync(activeManifest) || Boolean(recoverable)
   };
 }
 

@@ -490,8 +490,14 @@ async function applyFeeder(config, log) {
   } else {
     await installReShadeAt({
       gameDir, exePath, api: reshadeApi, manifest, reshadeSetup, setupRunner, log, gameInstance: true, bitness, source,
-      // dgVoodoo's DirectX 11 is not the game's own; there ReShade stays dxgi.dll.
-      reshadeProxy: api === 'dxgi' ? reshadeProxy : null
+      // A wrapped DirectX 8/9 game becomes a DirectX 11 one inside dgVoodoo, and
+      // which name that layer loads is not the same on every setup: some load
+      // dxgi.dll, some only d3d11.dll, and where it is the latter ReShade never
+      // starts at all, so nothing downstream of it does either - no overlay, no
+      // feed, no log to explain it (#343, #374). The name is the person's
+      // choice there too now. dxgi.dll stays the default, so nothing changes
+      // for an install that already works.
+      reshadeProxy
     });
   }
 
@@ -1001,11 +1007,69 @@ async function restoreFiles(gameDir, manifest, onLog) {
   }
 }
 
+// #325: a finished restore renames the manifest aside, and everything that
+// decides whether the game has anything installed reads the live one. So a
+// folder that still carries our files with no live manifest - a restore that
+// was interrupted after the rename, a game folder copied or moved, a second
+// install written by a build that then rolled back - shows "nothing installed"
+// and a dead Restore button, with the files still in the game. The retired
+// manifests never went anywhere. The newest one that still describes files
+// present in the game is offered instead, and restoring from it is the same
+// operation with the same backups: nothing is guessed at.
+function retiredManifests(gameDir) {
+  const root = backupRoot(gameDir);
+  let names = [];
+  try { names = fs.readdirSync(root); } catch { return []; }
+  return names
+    .filter((name) => name.startsWith(MANIFEST + '.done'))
+    .map((name) => {
+      const full = path.join(root, name);
+      let at = 0;
+      try { at = fs.statSync(full).mtimeMs; } catch {}
+      return { name, path: full, at };
+    })
+    .sort((a, b) => b.at - a.at);
+}
+// Something this manifest put there is still in the game. A size that differs
+// from the backup is enough; hashing a 160 MB runtime to answer a question
+// about a button is not.
+function stillInstalled(gameDir, manifest) {
+  const size = (file) => { try { return fs.statSync(file).size; } catch { return null; } };
+  for (const rel of manifest.added || []) {
+    try { if (fs.existsSync(journal.safePath(gameDir, rel))) return true; } catch {}
+  }
+  for (const item of manifest.replaced || []) {
+    try {
+      const target = size(journal.safePath(gameDir, item.rel));
+      const backup = size(originalPath(gameDir, manifest, item.rel));
+      if (target !== null && backup !== null && target !== backup) return true;
+    } catch {}
+  }
+  return false;
+}
+function recoverableManifest(gameDir) {
+  for (const entry of retiredManifests(gameDir)) {
+    let manifest = null;
+    try { manifest = JSON.parse(fs.readFileSync(entry.path, 'utf8')); } catch { continue; }
+    if (!manifest || manifest.version !== 1 || !Array.isArray(manifest.added) || !Array.isArray(manifest.replaced)) continue;
+    if (stillInstalled(gameDir, manifest)) return { ...entry, manifest };
+  }
+  return null;
+}
+
 async function restore(gameDir, onLog) {
   const log = (code, params) => onLog && onLog({ code, params: params || {} });
-  const manifestPath = path.join(backupRoot(gameDir), MANIFEST);
-  if (!fs.existsSync(manifestPath)) throw fail('errNoBackup');
-  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  let manifestPath = path.join(backupRoot(gameDir), MANIFEST);
+  let manifest = null;
+  if (fs.existsSync(manifestPath)) {
+    manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  } else {
+    const recovered = recoverableManifest(gameDir);
+    if (!recovered) throw fail('errNoBackup');
+    manifestPath = recovered.path;
+    manifest = recovered.manifest;
+    log('restoreRecovered', { date: manifest.date, route: manifest.route || null });
+  }
   await restoreFiles(gameDir, manifest, onLog);
 
   if (manifest.vulkanLayer) {
@@ -1013,7 +1077,7 @@ async function restore(gameDir, onLog) {
     log(removed ? 'vulkanLayerRemoved' : 'vulkanLayerKept');
   }
 
-  await fs.promises.rename(manifestPath, manifestPath + `.done-${Date.now()}`);
+  await fs.promises.rename(manifestPath, path.join(backupRoot(gameDir), `${MANIFEST}.done-${Date.now()}`));
   log('restoreDone', { date: manifest.date, route: manifest.route, game: manifest.game,
     replaced: manifest.replaced.length, added: manifest.added.length });
   return true;
@@ -1040,4 +1104,4 @@ async function makeReShadeConfigWritable(exeDir) {
   return cleared;
 }
 
-module.exports = { hookForApi, makeReShadeConfigWritable, applySwap, restore, restoreFiles, retireOldShaderCompiler, canWrite, backupRoot, compareVersions, beginManifest, originalPath, copyTracked, writeTracked, saveActiveManifest, enableAddonInIni, trackBeforeWrite };
+module.exports = { hookForApi, makeReShadeConfigWritable, applySwap, restore, restoreFiles, recoverableManifest, retireOldShaderCompiler, canWrite, backupRoot, compareVersions, beginManifest, originalPath, copyTracked, writeTracked, saveActiveManifest, enableAddonInIni, trackBeforeWrite };
