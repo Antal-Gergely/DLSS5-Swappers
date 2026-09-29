@@ -54,7 +54,10 @@ function cached(file, expected) {
 async function fetchBytes(url) {
   const response = await fetch(url, {
     headers: { 'User-Agent': 'DLSS5-Swapper/2.1' },
-    signal: AbortSignal.timeout(120000)
+    // A component is tens of megabytes. Two minutes was a timeout for the
+    // connection, not for the transfer, and slow or filtered links lost
+    // OptiScaler every time (#370, #373).
+    signal: AbortSignal.timeout(600000)
   });
   if (!response.ok) throw new Error(`Download failed (${response.status})`);
   return Buffer.from(await response.arrayBuffer());
@@ -81,9 +84,16 @@ async function fetchVerified(url, expected, file, deps = {}) {
   const fetcher = deps.fetchBytes || fetchBytes;
   const read = deps.digest || digest;
   let data;
-  try {
-    data = await fetcher(url);
-  } catch (cause) { throw componentError('componentNetwork', cause.message); }
+  // One stalled attempt is not proof that the network is gone. Only the
+  // transfer is retried; a checksum that does not match is still final.
+  const attempts = deps.attempts || 3;
+  for (let attempt = 1; ; attempt++) {
+    try { data = await fetcher(url); break; }
+    catch (cause) {
+      if (attempt >= attempts) throw componentError('componentNetwork', cause.message);
+      await new Promise((resolve) => setTimeout(resolve, attempt * 400));
+    }
+  }
   const received = crypto.createHash('sha256').update(data).digest('hex');
   if (received !== expected) {
     throw componentError('componentChecksum', `expected ${expected}, received ${received}`);

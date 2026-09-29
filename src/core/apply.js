@@ -286,8 +286,10 @@ function isAddonReShade(file) {
   }
 }
 
-function hookForApi(api) {
+function hookForApi(api, proxy) {
   if (api === 'opengl') return 'opengl32.dll';
+  // #328: a DirectX 11 game that never loads dxgi.dll still loads d3d11.dll.
+  if (api === 'dxgi' && proxy === 'd3d11') return 'd3d11.dll';
   if (api === 'd3d9') return 'd3d9.dll';
   return 'dxgi.dll';
 }
@@ -342,14 +344,16 @@ async function installReShadeAt(options) {
     log, gameInstance, bitness, source
   } = options;
   const exeDir = path.dirname(exePath);
-  const hook = hookForApi(api);
-  const hookPath = path.join(exeDir, hook);
-
   // Use the already bundled, architecture-checked Addon build directly. A
   // headless setup against host64 can choose/leave the wrong proxy.
   const bundled = source && source.feeder && source.feeder.vulkanLayerDir
     ? path.join(source.feeder.vulkanLayerDir, `ReShade${bitness}.dll`) : null;
-  if (bundled && fs.existsSync(bundled)) {
+  const direct = Boolean(bundled && fs.existsSync(bundled));
+  // Only the bundled copy can go in under d3d11.dll (#328); ReShade Setup
+  // names its own file.
+  const hook = hookForApi(api, direct ? options.reshadeProxy : null);
+  const hookPath = path.join(exeDir, hook);
+  if (direct) {
     if (pe.getBitness(bundled) !== bitness || !isAddonReShade(bundled)) throw fail('errReShadeArchitecture');
     const existed = fs.existsSync(hookPath);
     await copyTracked(manifest, gameDir, bundled, hookPath, { kind: 'reshade' });
@@ -408,7 +412,7 @@ async function installReShadeAt(options) {
 async function applyFeeder(config, log) {
   const {
     gameDir, exePath, api, source, reshadeSetup, setupRunner,
-    bitness: requestedBitness, vulkanLayerTarget, registryRunner, emulator
+    bitness: requestedBitness, vulkanLayerTarget, registryRunner, emulator, reshadeProxy
   } = config;
   const bitness = requestedBitness || pe.getBitness(exePath);
   const exeDir = path.dirname(exePath);
@@ -485,7 +489,9 @@ async function applyFeeder(config, log) {
     log('vulkanLayerInstalled', { global: true, manifest: manifest.vulkanLayer.manifest });
   } else {
     await installReShadeAt({
-      gameDir, exePath, api: reshadeApi, manifest, reshadeSetup, setupRunner, log, gameInstance: true, bitness, source
+      gameDir, exePath, api: reshadeApi, manifest, reshadeSetup, setupRunner, log, gameInstance: true, bitness, source,
+      // dgVoodoo's DirectX 11 is not the game's own; there ReShade stays dxgi.dll.
+      reshadeProxy: api === 'dxgi' ? reshadeProxy : null
     });
   }
 
@@ -573,6 +579,15 @@ async function applyFeeder(config, log) {
     [dlss.path, path.join(exeDir, dlss.name), 'runtime']
   ];
   for (const [src, dest, kind] of hostFiles) {
+    // The same rule as the native route: a newer DLSS already beside the game
+    // stays where it is (#329).
+    if (kind === 'runtime' && fs.existsSync(dest)) {
+      const current = pe.getFileVersion(dest), ours = pe.getFileVersion(src);
+      if (current && ours && compareVersions(current, ours) > 0) {
+        log('skipNewerVersion', { rel: path.relative(gameDir, dest), version: current, ours });
+        continue;
+      }
+    }
     const rel = await copyTracked(manifest, gameDir, src, dest, { kind, newVersion: pe.getFileVersion(src) });
     log(kind === 'addon' ? 'addonInstalled' : 'added', { rel, name: path.basename(dest), version: pe.getFileVersion(src) });
   }
@@ -682,7 +697,7 @@ async function applySwap(config, onLog) {
   if (bitness === 32 || config.route === 'feeder') return applyFeeder(config, log);
   const {
     gameDir, exePath, api, source, reshadeSetup, setupRunner,
-    installReShade, addMissingDlss, upgradeReShade
+    installReShade, addMissingDlss, upgradeReShade, reshadeProxy
   } = config;
   const exeDir = path.dirname(exePath);
 
@@ -724,6 +739,13 @@ async function applySwap(config, onLog) {
       log('skipSameVersion', { rel: file.rel, version: file.version });
       continue;
     }
+    // Never go backwards (#329). A game, or the person, may carry a newer
+    // DLSS than this app ships; it used to be replaced with ours because the
+    // versions merely differed. The neural runtime does not need the older one.
+    if (replacement.version && file.version && compareVersions(file.version, replacement.version) > 0) {
+      log('skipNewerVersion', { rel: file.rel, version: file.version, ours: replacement.version });
+      continue;
+    }
     await copyTracked(manifest, gameDir, replacement.path, file.path, { oldVersion: file.version, newVersion: replacement.version });
     log('replaced', { rel: file.rel, from: file.version, to: replacement.version });
   }
@@ -746,6 +768,10 @@ async function applySwap(config, onLog) {
         log('skipSameVersion', { rel, version: current });
         continue;
       }
+      if (current && item.version && compareVersions(current, item.version) > 0) {
+        log('skipNewerVersion', { rel, version: current, ours: item.version });
+        continue;
+      }
       const backupPath = originalPath(gameDir, manifest, rel);
       if (!wasAdded(manifest, rel) && !fs.existsSync(backupPath)) await copyOver(dest, backupPath);
       rememberReplacement(manifest, { rel, oldVersion: current, newVersion: item.version });
@@ -755,6 +781,27 @@ async function applySwap(config, onLog) {
       log('added', { rel, version: item.version });
     }
     await copyTracked(manifest, gameDir, item.path, dest, { newVersion: item.version });
+  }
+
+  // 2b) The multipass consumer reaches the neural runtime through NVIDIA's
+  //     Streamline. A game with DLSS of its own ships that layer; one without
+  //     it does not, and there the tool loaded and never started: "Streamline
+  //     interposer not found: sl.interposer.dll" (#336, #239). The app always
+  //     carried the files; this route never copied them. A game's own
+  //     Streamline is its SDK integration and is never touched or overwritten.
+  if (multipass) {
+    const own = (scan.streamlineFiles || []).some((file) => /^sl\.interposer\.dll$/i.test(file.name) && file.bitness === bitness);
+    if (own) {
+      log('streamlineKept');
+    } else {
+      for (const item of source.payload.filter((file) => /^sl\.[a-z_]+\.dll$/i.test(file.name))) {
+        if (pe.getBitness(item.path) !== bitness) continue;
+        const dest = path.join(exeDir, item.name);
+        if (fs.existsSync(dest)) continue;
+        const rel = await copyTracked(manifest, gameDir, item.path, dest, { kind: 'streamline', newVersion: item.version });
+        log('added', { rel, version: item.version });
+      }
+    }
   }
 
   // 3) The RenoDX add-on itself - and no other beside it.
@@ -800,7 +847,7 @@ async function applySwap(config, onLog) {
 
   const directProxy = source.feeder && fs.existsSync(path.join(source.feeder.vulkanLayerDir || '', `ReShade${bitness}.dll`));
   if (installingFresh && directProxy) {
-    await installReShadeAt({ gameDir, exePath, api, bitness, source, manifest, reshadeSetup, setupRunner, log, gameInstance: true });
+    await installReShadeAt({ gameDir, exePath, api, bitness, source, manifest, reshadeSetup, setupRunner, log, gameInstance: true, reshadeProxy });
   } else if (!haveSetup && (installingFresh || upgradingAsi || upgradingProxy)) {
     log('reshadeSetupMissing');
   } else if (upgradingAsi) {
@@ -887,6 +934,9 @@ async function applySwap(config, onLog) {
   // The file enabled is the file installed. This used to name source.addon,
   // which on the multipass route is not the add-on that was copied.
   if (addonName) await enableAddonInIni(exeDir, addonName, log, gameDir, manifest);
+  // The multipass tool's settings are not on ReShade's Home tab, where "No
+  // effect files found" sends people looking in the wrong place (#336).
+  if (multipass) log('multipassNext', { dlss: existing.some((file) => /^nvngx_dlss\.dll$/i.test(file.name)) ? 'yes' : 'no' });
 
   await saveActiveManifest(gameDir, manifest);
 
@@ -990,4 +1040,4 @@ async function makeReShadeConfigWritable(exeDir) {
   return cleared;
 }
 
-module.exports = { makeReShadeConfigWritable, applySwap, restore, restoreFiles, retireOldShaderCompiler, canWrite, backupRoot, compareVersions, beginManifest, originalPath, copyTracked, writeTracked, saveActiveManifest, enableAddonInIni, trackBeforeWrite };
+module.exports = { hookForApi, makeReShadeConfigWritable, applySwap, restore, restoreFiles, retireOldShaderCompiler, canWrite, backupRoot, compareVersions, beginManifest, originalPath, copyTracked, writeTracked, saveActiveManifest, enableAddonInIni, trackBeforeWrite };
